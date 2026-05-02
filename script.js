@@ -419,11 +419,14 @@ function fallbackLocalHistory(historyList) {
             progress = Math.min(Math.max(progress, 0), 100);
 
             html += `
-                <div class="history-item" onclick="loadStream('${entry.id}', '${entry.type}', '${season}', '${episode}', ${startAt})">
-                    <h3>${title}</h3>
-                    ${meta ? `<div class="history-meta">${meta}</div>` : ''}
-                    <div class="progress-bar-container">
-                        <div class="progress-bar" style="width: ${progress}%"></div>
+                <div class="history-item">
+                    <div class="delete-btn" onclick="event.stopPropagation(); deleteLocalHistory('${entry.id}')">✕</div>
+                    <div onclick="loadStream('${entry.id}', '${entry.type}', '${season}', '${episode}', ${startAt})">
+                        <h3>${title}</h3>
+                        ${meta ? `<div class="history-meta">${meta}</div>` : ''}
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: ${progress}%"></div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -437,6 +440,12 @@ function fallbackLocalHistory(historyList) {
 
 async function deleteHistory(tmdbId, type, season, episode) {
     if (!confirm("Remove this from Continue Watching?")) return;
+    
+    // First remove from local offline queue if it's there
+    let queue = JSON.parse(localStorage.getItem('streamsafe_offline_queue') || '[]');
+    queue = queue.filter(item => !(item.tmdbId == tmdbId && item.type == type && item.season == season && item.episode == episode));
+    localStorage.setItem('streamsafe_offline_queue', JSON.stringify(queue));
+
     try {
         await fetch(`${BACKEND_URL}/api/history`, {
             method: 'DELETE',
@@ -448,4 +457,18 @@ async function deleteHistory(tmdbId, type, season, episode) {
         console.error(e);
         alert("Failed to delete history.");
     }
+}
+
+function deleteLocalHistory(id) {
+    if (!confirm("Remove this from Continue Watching?")) return;
+    const storedData = localStorage.getItem('vidLinkProgress');
+    if (storedData) {
+        let historyObj = JSON.parse(storedData);
+        const entryKey = Object.keys(historyObj).find(k => historyObj[k].id == id);
+        if (entryKey) {
+            delete historyObj[entryKey];
+            localStorage.setItem('vidLinkProgress', JSON.stringify(historyObj));
+        }
+    }
+    renderHistory();
 }

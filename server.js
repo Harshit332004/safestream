@@ -37,7 +37,7 @@ const db = new sqlite3.Database('./history.db', (err) => {
             timestamp REAL,
             duration REAL,
             last_updated INTEGER,
-            PRIMARY KEY (tmdbId, type)
+            PRIMARY KEY (tmdbId, type, season, episode)
         )`);
     }
 });
@@ -51,14 +51,13 @@ app.post('/api/sync', (req, res) => {
     const now = Date.now();
     db.run(
         `INSERT INTO history (tmdbId, type, title, season, episode, timestamp, duration, last_updated) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(tmdbId, type) DO UPDATE SET 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(tmdbId, type, season, episode) DO UPDATE SET 
             title=excluded.title,
-            season=excluded.season,
-            episode=excluded.episode,
             timestamp=excluded.timestamp,
             duration=excluded.duration,
-            last_updated=excluded.last_updated`,
+            last_updated=excluded.last_updated
+         WHERE excluded.last_updated > history.last_updated`,
         [tmdbId, type, title || "Unknown", season || 1, episode || 1, timestamp, duration, now],
         (err) => {
             if (err) return res.status(500).json({ error: err.message });

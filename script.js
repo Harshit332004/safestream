@@ -60,6 +60,7 @@ async function searchTmdb() {
 
 function handleResultClick(id, title, type) {
     document.getElementById('search-results').style.display = 'none';
+    window.currentMediaTitle = title;
     
     if (type === 'movie') {
         loadStream(id, 'movie');
@@ -88,6 +89,7 @@ let frozenSeconds = 0;
 let lastKnownTime = 0;
 let userPaused = false;
 let reloadRetries = 0;
+let lastSyncTime = 0;
 
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) stopFreezeDetection();
@@ -186,7 +188,6 @@ function startFreezeDetection() {
     stopFreezeDetection();
     frozenSeconds = 0;
     lastTimeStr = -1;
-    reloadRetries = 0;
     // Check every 3 seconds for timestamp freezing
     freezeCheckInterval = setInterval(() => {
         if (!window.currentMedia) return;
@@ -245,7 +246,8 @@ window.addEventListener('message', async (event) => {
         }
 
         // Sync to backend every 5 seconds or when paused/ended
-        if (eventType === 'pause' || eventType === 'ended' || (eventType === 'timeupdate' && Math.floor(currentTime) % 5 === 0)) {
+        if (eventType === 'pause' || eventType === 'ended' || (eventType === 'timeupdate' && Date.now() - lastSyncTime > 5000)) {
+            if (eventType === 'timeupdate') lastSyncTime = Date.now();
             if (!window.currentMedia) return;
             
             try {
@@ -257,7 +259,7 @@ window.addEventListener('message', async (event) => {
                     body: JSON.stringify({
                         tmdbId: window.currentMedia.tmdbId,
                         type: window.currentMedia.type,
-                        title: document.getElementById('selected-show-title')?.innerText.replace('Selected: ', '') || "Current Stream",
+                        title: window.currentMediaTitle || "Current Stream",
                         season: window.currentMedia.season,
                         episode: window.currentMedia.episode,
                         timestamp: currentTime,
@@ -291,6 +293,7 @@ async function renderHistory() {
             }
         }
         
+        if (!res || !res.ok) throw new Error("Backend response not OK");
         const data = await res.json();
         
         if (!data.history || data.history.length === 0) {
@@ -303,7 +306,11 @@ async function renderHistory() {
             const title = entry.title && entry.title !== "Current Stream" ? entry.title : `ID: ${entry.tmdbId}`;
             const progress = Math.min((entry.timestamp / entry.duration) * 100, 100);
             const meta = entry.type === 'tv' ? `S${entry.season} E${entry.episode}` : 'Movie';
-            const startAt = Math.floor(entry.timestamp);
+            let startAt = Math.floor(entry.timestamp);
+            
+            if (entry.timestamp >= entry.duration - 10) {
+                startAt = 0; // Restart from beginning if completed
+            }
 
             html += `
                 <div class="history-item" onclick="loadStream('${entry.tmdbId}', '${entry.type}', '${entry.season}', '${entry.episode}', ${startAt})">

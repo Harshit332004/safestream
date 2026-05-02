@@ -27,10 +27,13 @@ async function searchTmdb() {
     const searchUrl = `https://api.themoviedb.org/3/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=en-US&page=1`;
 
     try {
+        const resultsContainer = document.getElementById('search-results');
+        resultsContainer.innerHTML = '<div class="search-result-item" style="text-align: center;">⏳ Searching...</div>';
+        resultsContainer.style.display = 'block';
+
         const response = await fetch(searchUrl);
         const data = await response.json();
         
-        const resultsContainer = document.getElementById('search-results');
         resultsContainer.innerHTML = '';
         
         if (data.results && data.results.length > 0) {
@@ -90,10 +93,35 @@ let lastKnownTime = 0;
 let userPaused = false;
 let reloadRetries = 0;
 let lastSyncTime = 0;
+let offlineSyncQueue = JSON.parse(localStorage.getItem('streamsafe_offline_queue') || '[]');
+
+function flushPendingSync() {
+    if (!navigator.onLine || offlineSyncQueue.length === 0) return;
+    const queueToProcess = [...offlineSyncQueue];
+    offlineSyncQueue = [];
+    localStorage.setItem('streamsafe_offline_queue', '[]');
+    
+    queueToProcess.forEach(async (data) => {
+        try {
+            await fetch(`${BACKEND_URL}/api/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': 'streamsafe-secret' },
+                body: JSON.stringify(data)
+            });
+        } catch (e) {
+            offlineSyncQueue.push(data);
+            localStorage.setItem('streamsafe_offline_queue', JSON.stringify(offlineSyncQueue));
+        }
+    });
+}
+window.addEventListener('online', flushPendingSync);
 
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) stopFreezeDetection();
-    else if (window.currentMedia) startFreezeDetection();
+    else {
+        if (window.currentMedia) startFreezeDetection();
+        else renderHistory(); // Refresh history when user returns to tab
+    }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -114,7 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-// Register Service Worker for PWA
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').then(registration => {
             console.log('PWA ServiceWorker registered successfully!');
@@ -123,10 +150,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
-
-function loginUser() {
-    // Legacy function removed for Single-User mode
-}
 
 // Function to load the stream
 function loadStream(tmdbId, type, season, episode, startAt) {
@@ -151,7 +174,7 @@ function loadStream(tmdbId, type, season, episode, startAt) {
 
     // Dynamic iframe injection for strict memory management with tap-shield/fade
     const wrapper = document.getElementById('iframe-wrapper');
-    wrapper.innerHTML = `<iframe id="video-player" src="${url}" loading="lazy" style="animation: fadeIn 0.3s ease-out;" allowfullscreen allow="autoplay; fullscreen; picture-in-picture; encrypted-media; clipboard-write"></iframe>`;
+    wrapper.innerHTML = `<iframe id="video-player" src="${url}" style="animation: fadeIn 0.3s ease-out;" allowfullscreen allow="autoplay; fullscreen; picture-in-picture; encrypted-media; clipboard-write"></iframe>`;
 
     document.getElementById('player-container').style.display = 'block';
     
@@ -250,24 +273,33 @@ window.addEventListener('message', async (event) => {
             if (eventType === 'timeupdate') lastSyncTime = Date.now();
             if (!window.currentMedia) return;
             
+            const payload = {
+                tmdbId: window.currentMedia.tmdbId,
+                type: window.currentMedia.type,
+                title: window.currentMediaTitle || "Current Stream",
+                season: window.currentMedia.season,
+                episode: window.currentMedia.episode,
+                timestamp: currentTime,
+                duration: duration
+            };
+            
+            if (!navigator.onLine) {
+                offlineSyncQueue.push(payload);
+                localStorage.setItem('streamsafe_offline_queue', JSON.stringify(offlineSyncQueue));
+                return;
+            }
+            
             try {
                 // Ensure server is running for this to work
                 await fetch(`${BACKEND_URL}/api/sync`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-api-key': 'streamsafe-secret' },
                     cache: 'no-store',
-                    body: JSON.stringify({
-                        tmdbId: window.currentMedia.tmdbId,
-                        type: window.currentMedia.type,
-                        title: window.currentMediaTitle || "Current Stream",
-                        season: window.currentMedia.season,
-                        episode: window.currentMedia.episode,
-                        timestamp: currentTime,
-                        duration: duration
-                    })
+                    body: JSON.stringify(payload)
                 });
             } catch (e) {
-                // Fails silently if server is not running, falls back to local storage
+                offlineSyncQueue.push(payload);
+                localStorage.setItem('streamsafe_offline_queue', JSON.stringify(offlineSyncQueue));
             }
         }
     }
@@ -276,6 +308,11 @@ window.addEventListener('message', async (event) => {
 // Render the watch history on load (prioritizing Cloud Backend)
 async function renderHistory() {
     const historyList = document.getElementById('history-list');
+    historyList.innerHTML = `
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+    `;
     
     try {
         let res;
@@ -288,6 +325,11 @@ async function renderHistory() {
                 if (res.ok) break;
             } catch (e) {
                 if (i === 2) throw e;
+                historyList.innerHTML = `
+                    <div class="skeleton skeleton-card" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:0.9rem;">
+                        ⏳ Waking up server... (${i+1}/3)
+                    </div>
+                `;
                 console.warn(`Backend wake-up delay... retrying (${i+1}/3)`);
                 await new Promise(r => setTimeout(r, 2000));
             }
@@ -313,11 +355,14 @@ async function renderHistory() {
             }
 
             html += `
-                <div class="history-item" onclick="loadStream('${entry.tmdbId}', '${entry.type}', '${entry.season}', '${entry.episode}', ${startAt})">
-                    <h3>${title}</h3>
-                    <div class="history-meta">${meta}</div>
-                    <div class="progress-bar-container">
-                        <div class="progress-bar" style="width: ${progress}%"></div>
+                <div class="history-item">
+                    <div class="delete-btn" onclick="event.stopPropagation(); deleteHistory('${entry.tmdbId}', '${entry.type}', '${entry.season}', '${entry.episode}')">✕</div>
+                    <div onclick="loadStream('${entry.tmdbId}', '${entry.type}', '${entry.season}', '${entry.episode}', ${startAt})">
+                        <h3>${title}</h3>
+                        <div class="history-meta">${meta}</div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: ${progress}%"></div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -387,5 +432,20 @@ function fallbackLocalHistory(historyList) {
     } catch (e) {
         console.error("Error parsing history", e);
         historyList.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.875rem;">Failed to load local history.</p>';
+    }
+}
+
+async function deleteHistory(tmdbId, type, season, episode) {
+    if (!confirm("Remove this from Continue Watching?")) return;
+    try {
+        await fetch(`${BACKEND_URL}/api/history`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': 'streamsafe-secret' },
+            body: JSON.stringify({ tmdbId, type, season, episode })
+        });
+        renderHistory();
+    } catch(e) {
+        console.error(e);
+        alert("Failed to delete history.");
     }
 }

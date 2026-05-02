@@ -74,5 +74,20 @@ app.get('/api/history', (req, res) => {
     });
 });
 
+// Delete a history entry
+app.delete('/api/history', (req, res) => {
+    const { tmdbId, type, season, episode } = req.body;
+    if (!tmdbId || !type) return res.status(400).json({ error: "Missing parameters" });
+
+    db.run(
+        `DELETE FROM history WHERE tmdbId = ? AND type = ? AND season = ? AND episode = ?`,
+        [tmdbId, type, season || 1, episode || 1],
+        (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        }
+    );
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`StreamSafe Backend running on port ${PORT}`));

@@ -1,0 +1,18 @@
+{
+  "name": "StreamSafe Video",
+  "short_name": "StreamSafe",
+  "description": "Premium Video Streaming PWA",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "scope": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/4/4b/Play_Button_transparent.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

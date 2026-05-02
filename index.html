@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamSafe - College Project</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://vidlink.pro">
+    <link rel="dns-prefetch" href="https://vidlink.pro">
+    <!-- PWA Installation Requirements -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/4/4b/Play_Button_transparent.png">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>StreamSafe</h1>
+            <p>Fast, seamless, and resume-enabled streaming</p>
+            <div class="user-session" style="display: flex; justify-content: center; gap: 10px; margin-top: 15px;">
+                <input type="text" id="username" placeholder="Username to Sync" style="max-width: 200px; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: rgba(0,0,0,0.3); color: white;">
+                <button class="btn-primary" onclick="loginUser()" style="width: auto; padding: 0.5rem 1rem; margin-top: 0; font-size: 0.9rem;">Enable Cloud Sync</button>
+            </div>
+        </header>
+        
+        <div id="network-warning" style="display: none; background: #b91c1c; color: white; padding: 10px; text-align: center; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; animation: fadeIn 0.5s;">
+            ⚠️ Slow network detected. Video may buffer or take longer to load.
+        </div>
+
+        <main>
+            <section class="input-section">
+                <div class="card form-card">
+                    <h2>Play Content</h2>
+                    <div class="form-group">
+                        <label for="video-type">Content Type</label>
+                        <select id="video-type" onchange="resetSearch()">
+                            <option value="movie">Movie</option>
+                            <option value="tv">TV Show</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="search-query">Search Title</label>
+                        <div class="search-row" style="display: flex; gap: 10px;">
+                            <input type="text" id="search-query" placeholder="e.g. Breaking Bad" onkeydown="if(event.key === 'Enter') searchTmdb()">
+                            <button class="btn-primary" onclick="searchTmdb()" style="margin-top: 0; width: auto; white-space: nowrap;">Search</button>
+                        </div>
+                    </div>
+                    <div id="search-results" class="search-results" style="display: none;"></div>
+
+                    <div id="tv-fields" style="display: none; margin-top: 1rem;">
+                        <p id="selected-show-title" style="margin-bottom: 10px; color: var(--accent); font-weight: bold;"></p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="season">Season</label>
+                                <input type="number" id="season" value="1" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="episode">Episode</label>
+                                <input type="number" id="episode" value="1" min="1">
+                            </div>
+                        </div>
+                        <button class="btn-primary" onclick="playSelectedShow()">Play Show</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="player-section" id="player-container" style="display: none;">
+                <div class="video-wrapper" id="iframe-wrapper">
+                    <!-- Iframe injected by JS for strict memory management -->
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-secondary" onclick="reloadPlayer()" style="flex: 1;">🔄 Reload Video</button>
+                    <button class="btn-secondary" onclick="closePlayer()" style="flex: 1;">❌ Close</button>
+                </div>
+            </section>
+
+            <section class="history-section" id="history-container">
+                <h2>Continue Watching</h2>
+                <div id="history-list" class="history-grid">
+                    <!-- History items will be injected here by JS -->
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

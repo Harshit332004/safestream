@@ -82,7 +82,6 @@ function playSelectedShow() {
 // Example: const BACKEND_URL = "https://my-streamsafe-backend.onrender.com";
 const BACKEND_URL = "https://safestream-ulch.onrender.com"; 
 
-let currentUser = localStorage.getItem('streamsafe_user') || 'guest_' + Math.floor(Math.random()*1000);
 let freezeCheckInterval = null;
 let lastTimeStr = -1;
 let frozenSeconds = 0;
@@ -96,8 +95,6 @@ document.addEventListener("visibilitychange", () => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-    const userInp = document.getElementById('username');
-    if (userInp) userInp.value = currentUser;
     renderHistory();
     
     // Check network speed and offline status
@@ -115,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Register Service Worker for PWA
+// Register Service Worker for PWA
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').then(registration => {
             console.log('PWA ServiceWorker registered successfully!');
@@ -126,13 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function loginUser() {
-    const name = document.getElementById('username').value.trim();
-    if (name) {
-        currentUser = name;
-        localStorage.setItem('streamsafe_user', currentUser);
-        alert(`Cloud Sync enabled for ${currentUser}!`);
-        renderHistory();
-    }
+    // Legacy function removed for Single-User mode
 }
 
 // Function to load the stream
@@ -264,7 +255,6 @@ window.addEventListener('message', async (event) => {
                     headers: { 'Content-Type': 'application/json', 'x-api-key': 'streamsafe-secret' },
                     cache: 'no-store',
                     body: JSON.stringify({
-                        userId: currentUser,
                         tmdbId: window.currentMedia.tmdbId,
                         type: window.currentMedia.type,
                         title: document.getElementById('selected-show-title')?.innerText.replace('Selected: ', '') || "Current Stream",
@@ -289,7 +279,7 @@ async function renderHistory() {
         let res;
         for (let i = 0; i < 3; i++) {
             try {
-                res = await fetch(`${BACKEND_URL}/api/history/${currentUser}`, {
+                res = await fetch(`${BACKEND_URL}/api/history`, {
                     headers: { 'x-api-key': 'streamsafe-secret' },
                     cache: 'no-store'
                 });

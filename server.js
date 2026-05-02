@@ -24,12 +24,11 @@ app.use('/api', (req, res, next) => {
 // Serve the frontend static files
 app.use(express.static(path.join(__dirname)));
 
-// Initialize SQLite database
+// Initialize SQLite database (Single-User Schema)
 const db = new sqlite3.Database('./history.db', (err) => {
     if (err) console.error("Database error:", err);
     else {
         db.run(`CREATE TABLE IF NOT EXISTS history (
-            userId TEXT,
             tmdbId TEXT,
             type TEXT,
             title TEXT,
@@ -38,29 +37,29 @@ const db = new sqlite3.Database('./history.db', (err) => {
             timestamp REAL,
             duration REAL,
             last_updated INTEGER,
-            PRIMARY KEY (userId, tmdbId, type)
+            PRIMARY KEY (tmdbId, type)
         )`);
     }
 });
 
-// Sync playback progress (receives exact seconds)
+// Sync playback progress (Single User)
 app.post('/api/sync', (req, res) => {
-    const { userId, tmdbId, type, title, season, episode, timestamp, duration } = req.body;
+    const { tmdbId, type, title, season, episode, timestamp, duration } = req.body;
     
-    if (!userId || !tmdbId || !type) return res.status(400).json({ error: "Missing parameters" });
+    if (!tmdbId || !type) return res.status(400).json({ error: "Missing parameters" });
 
     const now = Date.now();
     db.run(
-        `INSERT INTO history (userId, tmdbId, type, title, season, episode, timestamp, duration, last_updated) 
+        `INSERT INTO history (tmdbId, type, title, season, episode, timestamp, duration, last_updated) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(userId, tmdbId, type) DO UPDATE SET 
+         ON CONFLICT(tmdbId, type) DO UPDATE SET 
             title=excluded.title,
             season=excluded.season,
             episode=excluded.episode,
             timestamp=excluded.timestamp,
             duration=excluded.duration,
             last_updated=excluded.last_updated`,
-        [userId, tmdbId, type, title || "Unknown", season || 1, episode || 1, timestamp, duration, now],
+        [tmdbId, type, title || "Unknown", season || 1, episode || 1, timestamp, duration, now],
         (err) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ success: true, syncedAt: now });
@@ -68,14 +67,13 @@ app.post('/api/sync', (req, res) => {
     );
 });
 
-// Retrieve cross-device watch history
-app.get('/api/history/:userId', (req, res) => {
-    const { userId } = req.params;
-    db.all(`SELECT * FROM history WHERE userId = ? ORDER BY last_updated DESC`, [userId], (err, rows) => {
+// Retrieve global watch history
+app.get('/api/history', (req, res) => {
+    db.all(`SELECT * FROM history ORDER BY last_updated DESC`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ history: rows });
     });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Production server running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`StreamSafe Backend running on port ${PORT}`));

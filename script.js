@@ -80,7 +80,7 @@ function playSelectedShow() {
 // === DEPLOYMENT CONFIG ===
 // If deploying Frontend to Vercel & Backend to Render, put your Render URL here:
 // Example: const BACKEND_URL = "https://my-streamsafe-backend.onrender.com";
-const BACKEND_URL = ""; 
+const BACKEND_URL = "https://safestream-ulch.onrender.com"; 
 
 let currentUser = localStorage.getItem('streamsafe_user') || 'guest_' + Math.floor(Math.random()*1000);
 let freezeCheckInterval = null;

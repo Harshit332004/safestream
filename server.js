@@ -19,7 +19,6 @@ const db = new sqlite3.Database('./history.db', (err) => {
     if (err) { console.error('DB open error:', err); return; }
 
     db.serialize(() => {
-        // Create table if not exists
         db.run(`CREATE TABLE IF NOT EXISTS history (
             tmdbId TEXT, type TEXT, title TEXT,
             season INTEGER, episode INTEGER,
@@ -27,29 +26,23 @@ const db = new sqlite3.Database('./history.db', (err) => {
             PRIMARY KEY (tmdbId, type, season, episode)
         )`);
 
-        // Create index for fast partial-sync queries
         db.run(`CREATE INDEX IF NOT EXISTS idx_last_updated ON history(last_updated)`);
 
-        // Boot cleanup: remove genuinely completed items (30s buffer to protect near-completion)
         db.run(`DELETE FROM history WHERE duration > 0 AND timestamp >= duration - 30`, (err) => {
             if (!err) console.log('Boot cleanup: removed completed videos.');
         });
     });
 });
 
-// --- Write counter for periodic cleanup ---
 let writeCount = 0;
 
-// --- POST /api/sync ---
-// Smart upsert: only writes if timestamp changed by >= 2 seconds
 app.post('/api/sync', (req, res) => {
     const { tmdbId, type, title, season, episode, timestamp, duration, last_updated } = req.body;
 
     if (!tmdbId || !type || timestamp === undefined) {
-        return res.status(400).json({ error: 'Invalid payload: missing required fields' });
+        return res.status(400).json({ error: 'Invalid payload' });
     }
 
-    // Periodic cleanup every 50 writes
     writeCount++;
     if (writeCount % 50 === 0) {
         db.run(`DELETE FROM history WHERE duration > 0 AND timestamp >= duration - 30`);
@@ -71,8 +64,6 @@ app.post('/api/sync', (req, res) => {
     );
 });
 
-// --- GET /api/continue-watching ---
-// Partial sync: only returns records newer than `since`, excludes completed videos
 app.get('/api/continue-watching', (req, res) => {
     const since = parseInt(req.query.since) || 0;
 
@@ -93,10 +84,9 @@ app.get('/api/continue-watching', (req, res) => {
     });
 });
 
-// --- DELETE /api/history ---
 app.delete('/api/history', (req, res) => {
     const { tmdbId, type, season, episode } = req.body;
-    if (!tmdbId || !type) return res.status(400).json({ error: 'Missing required fields' });
+    if (!tmdbId || !type) return res.status(400).json({ error: 'Missing fields' });
 
     db.run(
         `DELETE FROM history WHERE tmdbId = ? AND type = ? AND season = ? AND episode = ?`,
@@ -105,7 +95,6 @@ app.delete('/api/history', (req, res) => {
     );
 });
 
-// --- Health check (keeps Render awake) ---
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 const PORT = process.env.PORT || 3000;

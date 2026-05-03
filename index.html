@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,13 +10,14 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
 </head>
+
 <body>
     <div class="app-container">
         <header>
             <h1>StreamSafe</h1>
             <p>Hyper-Resilient Streaming Engine</p>
         </header>
-        
+
         <div id="status-toast" class="toast hidden"></div>
 
         <main>
@@ -34,8 +36,8 @@
                 <div id="tv-selector" class="hidden" style="margin-top: 1rem;">
                     <p id="tv-title-display" class="accent-text"></p>
                     <div class="form-row">
-                        <input type="number" id="season-input" placeholder="Season" value="1" min="1">
-                        <input type="number" id="episode-input" placeholder="Episode" value="1" min="1">
+                        <select id="season-select"></select>
+                        <select id="episode-select"></select>
                         <button id="btn-play-tv" class="btn-primary">Play</button>
                     </div>
                 </div>
@@ -63,7 +65,9 @@
             <div class="item-content" data-action="resume-play">
                 <h3 class="item-title"></h3>
                 <div class="item-meta"></div>
-                <div class="progress-track"><div class="progress-fill"></div></div>
+                <div class="progress-track">
+                    <div class="progress-fill"></div>
+                </div>
             </div>
         </div>
     </template>
@@ -75,4 +79,5 @@
 
     <script src="script.js"></script>
 </body>
+
 </html>

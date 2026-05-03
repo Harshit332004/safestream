@@ -3,83 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamSafe - College Project</title>
+    <title>StreamSafe - Lightning Fast</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap"></noscript>
-    <link rel="preconnect" href="https://vidlink.pro">
-    <link rel="dns-prefetch" href="https://vidlink.pro">
-    <!-- PWA Installation Requirements -->
+    <link rel="preconnect" href="https://api.themoviedb.org" crossorigin>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
-    <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/4/4b/Play_Button_transparent.png">
 </head>
 <body>
     <div class="app-container">
         <header>
             <h1>StreamSafe</h1>
-            <p>Fast, seamless, and resume-enabled streaming</p>
+            <p>Hyper-Resilient Streaming Engine</p>
         </header>
         
-        <div id="network-warning" style="display: none; background: #b91c1c; color: white; padding: 10px; text-align: center; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; animation: fadeIn 0.5s;">
-            ⚠️ Slow network detected. Video may buffer or take longer to load.
-        </div>
+        <div id="status-toast" class="toast hidden"></div>
 
         <main>
-            <section class="input-section">
-                <div class="card form-card">
-                    <h2>Play Content</h2>
-                    <div class="form-group">
-                        <label for="video-type">Content Type</label>
-                        <select id="video-type" onchange="resetSearch()">
-                            <option value="movie">Movie</option>
-                            <option value="tv">TV Show</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="search-query">Search Title</label>
-                        <div class="search-row" style="display: flex; gap: 10px;">
-                            <input type="text" id="search-query" placeholder="e.g. Breaking Bad" onkeydown="if(event.key === 'Enter') searchTmdb()">
-                            <button class="btn-primary" onclick="searchTmdb()" style="margin-top: 0; width: auto; white-space: nowrap;">Search</button>
-                        </div>
-                    </div>
-                    <div id="search-results" class="search-results" style="display: none;"></div>
+            <!-- UI Sections -->
+            <section class="card form-card">
+                <div class="form-row">
+                    <select id="media-type">
+                        <option value="movie">Movie</option>
+                        <option value="tv">TV Show</option>
+                    </select>
+                    <input type="text" id="search-query" placeholder="Search title..." autocomplete="off">
+                    <button id="btn-search" class="btn-primary">Search</button>
+                </div>
+                <div id="search-results" class="search-results hidden"></div>
 
-                    <div id="tv-fields" style="display: none; margin-top: 1rem;">
-                        <p id="selected-show-title" style="margin-bottom: 10px; color: var(--accent); font-weight: bold;"></p>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="season">Season</label>
-                                <input type="number" id="season" value="1" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label for="episode">Episode</label>
-                                <input type="number" id="episode" value="1" min="1">
-                            </div>
-                        </div>
-                        <button class="btn-primary" onclick="playSelectedShow()">Play Show</button>
+                <div id="tv-selector" class="hidden" style="margin-top: 1rem;">
+                    <p id="tv-title-display" class="accent-text"></p>
+                    <div class="form-row">
+                        <input type="number" id="season-input" placeholder="Season" value="1" min="1">
+                        <input type="number" id="episode-input" placeholder="Episode" value="1" min="1">
+                        <button id="btn-play-tv" class="btn-primary">Play</button>
                     </div>
                 </div>
             </section>
 
-            <section class="player-section" id="player-container" style="display: none;">
-                <div class="video-wrapper" id="iframe-wrapper">
-                    <!-- Iframe injected by JS for strict memory management -->
+            <section id="player-section" class="player-section hidden">
+                <div class="player-header">
+                    <span id="provider-badge" class="badge">Vidlink</span>
+                    <button class="btn-icon" data-action="close-player">✕ Close</button>
                 </div>
-                <div style="display: flex; gap: 10px;">
-                    <button class="btn-secondary" onclick="reloadPlayer()" style="flex: 1;">🔄 Reload Video</button>
-                    <button class="btn-secondary" onclick="closePlayer()" style="flex: 1;">❌ Close</button>
-                </div>
+                <div class="video-wrapper" id="iframe-wrapper"></div>
             </section>
 
-            <section class="history-section" id="history-container">
+            <section class="history-section">
                 <h2>Continue Watching</h2>
-                <div id="history-list" class="history-grid">
-                    <!-- History items will be injected here by JS -->
-                </div>
+                <div id="history-grid" class="history-grid"></div>
             </section>
         </main>
     </div>
+
+    <!-- DOM Templates for 0ms Rendering -->
+    <template id="tpl-history-item">
+        <div class="history-item">
+            <button class="delete-btn" data-action="delete-history">✕</button>
+            <div class="item-content" data-action="resume-play">
+                <h3 class="item-title"></h3>
+                <div class="item-meta"></div>
+                <div class="progress-track"><div class="progress-fill"></div></div>
+            </div>
+        </div>
+    </template>
+    <template id="tpl-search-item">
+        <div class="search-item" data-action="select-search">
+            <strong class="search-title"></strong> <span class="search-year"></span>
+        </div>
+    </template>
+
     <script src="script.js"></script>
 </body>
 </html>

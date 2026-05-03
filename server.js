@@ -1,93 +1,112 @@
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
 
 const app = express();
-
-// Explicit CORS to allow Vercel frontend to talk to Render backend
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'x-api-key']
-}));
+app.use(cors());
 app.use(express.json());
 
-// Protect the backend since it will be public
+// --- Auth Middleware ---
 app.use('/api', (req, res, next) => {
-    if (req.headers["x-api-key"] !== "streamsafe-secret") {
-        return res.status(403).json({ error: "Unauthorized access" });
+    if (req.method !== 'OPTIONS' && req.headers['x-api-key'] !== 'streamsafe-secret') {
+        return res.status(403).json({ error: 'Unauthorized' });
     }
     next();
 });
 
-// Serve the frontend static files
-app.use(express.static(path.join(__dirname)));
-
-// Initialize SQLite database (Single-User Schema)
+// --- Database Setup ---
 const db = new sqlite3.Database('./history.db', (err) => {
-    if (err) console.error("Database error:", err);
-    else {
+    if (err) { console.error('DB open error:', err); return; }
+
+    db.serialize(() => {
+        // Create table if not exists
         db.run(`CREATE TABLE IF NOT EXISTS history (
-            tmdbId TEXT,
-            type TEXT,
-            title TEXT,
-            season INTEGER,
-            episode INTEGER,
-            timestamp REAL,
-            duration REAL,
-            last_updated INTEGER,
+            tmdbId TEXT, type TEXT, title TEXT,
+            season INTEGER, episode INTEGER,
+            timestamp REAL, duration REAL, last_updated INTEGER,
             PRIMARY KEY (tmdbId, type, season, episode)
         )`);
-    }
+
+        // Create index for fast partial-sync queries
+        db.run(`CREATE INDEX IF NOT EXISTS idx_last_updated ON history(last_updated)`);
+
+        // Boot cleanup: remove genuinely completed items (30s buffer to protect near-completion)
+        db.run(`DELETE FROM history WHERE duration > 0 AND timestamp >= duration - 30`, (err) => {
+            if (!err) console.log('Boot cleanup: removed completed videos.');
+        });
+    });
 });
 
-// Sync playback progress (Single User)
-app.post('/api/sync', (req, res) => {
-    const { tmdbId, type, title, season, episode, timestamp, duration } = req.body;
-    
-    if (!tmdbId || !type) return res.status(400).json({ error: "Missing parameters" });
+// --- Write counter for periodic cleanup ---
+let writeCount = 0;
 
-    const now = Date.now();
+// --- POST /api/sync ---
+// Smart upsert: only writes if timestamp changed by >= 2 seconds
+app.post('/api/sync', (req, res) => {
+    const { tmdbId, type, title, season, episode, timestamp, duration, last_updated } = req.body;
+
+    if (!tmdbId || !type || timestamp === undefined) {
+        return res.status(400).json({ error: 'Invalid payload: missing required fields' });
+    }
+
+    // Periodic cleanup every 50 writes
+    writeCount++;
+    if (writeCount % 50 === 0) {
+        db.run(`DELETE FROM history WHERE duration > 0 AND timestamp >= duration - 30`);
+    }
+
     db.run(
-        `INSERT INTO history (tmdbId, type, title, season, episode, timestamp, duration, last_updated) 
+        `INSERT INTO history (tmdbId, type, title, season, episode, timestamp, duration, last_updated)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(tmdbId, type, season, episode) DO UPDATE SET 
-            title=excluded.title,
-            timestamp=excluded.timestamp,
-            duration=excluded.duration,
-            last_updated=excluded.last_updated
-         WHERE excluded.last_updated > history.last_updated`,
-        [tmdbId, type, title || "Unknown", season || 1, episode || 1, timestamp, duration, now],
-        (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, syncedAt: now });
-        }
+         ON CONFLICT(tmdbId, type, season, episode) DO UPDATE SET
+            title       = excluded.title,
+            timestamp   = excluded.timestamp,
+            duration    = excluded.duration,
+            last_updated = excluded.last_updated
+         WHERE excluded.last_updated > history.last_updated
+           AND abs(excluded.timestamp - history.timestamp) >= 2`,
+        [tmdbId, type, title || 'Unknown', season || 1, episode || 1,
+         timestamp, duration, last_updated || Date.now()],
+        (err) => err ? res.status(500).json({ error: err.message }) : res.json({ success: true })
     );
 });
 
-// Retrieve global watch history
-app.get('/api/history', (req, res) => {
-    db.all(`SELECT * FROM history ORDER BY last_updated DESC`, [], (err, rows) => {
+// --- GET /api/continue-watching ---
+// Partial sync: only returns records newer than `since`, excludes completed videos
+app.get('/api/continue-watching', (req, res) => {
+    const since = parseInt(req.query.since) || 0;
+
+    db.all(`
+        SELECT
+            tmdbId, type, title, season, episode,
+            timestamp, duration, last_updated,
+            CAST(MIN((timestamp * 100.0 / duration), 100) AS REAL) AS progress
+        FROM history
+        WHERE duration > 0
+          AND timestamp < duration - 10
+          AND last_updated > ?
+        ORDER BY last_updated DESC
+        LIMIT 15
+    `, [since], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ history: rows });
     });
 });
 
-// Delete a history entry
+// --- DELETE /api/history ---
 app.delete('/api/history', (req, res) => {
     const { tmdbId, type, season, episode } = req.body;
-    if (!tmdbId || !type) return res.status(400).json({ error: "Missing parameters" });
+    if (!tmdbId || !type) return res.status(400).json({ error: 'Missing required fields' });
 
     db.run(
         `DELETE FROM history WHERE tmdbId = ? AND type = ? AND season = ? AND episode = ?`,
         [tmdbId, type, season || 1, episode || 1],
-        (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true });
-        }
+        (err) => err ? res.status(500).json({ error: err.message }) : res.json({ success: true })
     );
 });
 
+// --- Health check (keeps Render awake) ---
+app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`StreamSafe Backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`StreamSafe Backend v2 running on port ${PORT}`));

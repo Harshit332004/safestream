@@ -32,7 +32,6 @@
                 </div>
                 <div id="search-results" class="search-results hidden"></div>
 
-                <!-- FIXED: Reactive TV Selector -->
                 <div id="tv-selector" class="hidden" style="margin-top: 1rem;">
                     <p id="tv-title-display" class="accent-text"
                         style="margin-bottom: 8px; font-weight: bold; color: var(--accent);"></p>
@@ -46,9 +45,8 @@
 
             <section id="player-section" class="player-section hidden">
                 <div class="player-header">
-                    <!-- Manual Switch: Click badge to cycle providers -->
                     <span id="provider-badge" class="badge" data-action="manual-switch" style="cursor: pointer;"
-                        title="Click to change server"></span>
+                        title="Click to cycle server"></span>
                     <button class="btn-icon" data-action="close-player">✕ Close</button>
                 </div>
                 <div class="video-wrapper" id="iframe-wrapper"></div>
@@ -61,7 +59,7 @@
         </main>
     </div>
 
-    <!-- DOM Templates -->
+    <!-- Optimization: DOM Templates for 0ms Rendering -->
     <template id="tpl-history-item">
         <div class="history-item">
             <button class="delete-btn" data-action="delete-history">✕</button>
@@ -74,7 +72,6 @@
             </div>
         </div>
     </template>
-
     <template id="tpl-search-item">
         <div class="search-item" data-action="select-search">
             <strong class="search-title"></strong> <span class="search-year"></span>

@@ -4,13 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamSafe - Lightning Fast</title>
+    <title>StreamSafe - Elite Engine</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://api.themoviedb.org" crossorigin>
     <link rel="manifest" href="manifest.json">
-    <meta http-equiv="Content-Security-Policy"
-        content="default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob: 'unsafe-inline'; style-src * 'unsafe-inline';">
     <meta name="theme-color" content="#0f172a">
+    <link rel="preconnect" href="https://api.themoviedb.org" crossorigin>
 </head>
 
 <body>
@@ -23,7 +21,6 @@
         <div id="status-toast" class="toast hidden"></div>
 
         <main>
-            <!-- UI Sections -->
             <section class="card form-card">
                 <div class="form-row">
                     <select id="media-type">
@@ -35,19 +32,23 @@
                 </div>
                 <div id="search-results" class="search-results hidden"></div>
 
+                <!-- FIXED: Reactive TV Selector -->
                 <div id="tv-selector" class="hidden" style="margin-top: 1rem;">
-                    <p id="tv-title-display" class="accent-text"></p>
+                    <p id="tv-title-display" class="accent-text"
+                        style="margin-bottom: 8px; font-weight: bold; color: var(--accent);"></p>
                     <div class="form-row">
-                        <input type="number" id="season-input" placeholder="Season" value="1" min="1">
-                        <input type="number" id="episode-input" placeholder="Episode" value="1" min="1">
-                        <button id="btn-play-tv" class="btn-primary">Play</button>
+                        <select id="season-select" style="flex: 1;"></select>
+                        <select id="episode-select" style="flex: 2;"></select>
+                        <button id="btn-play-tv" class="btn-primary" disabled>Play</button>
                     </div>
                 </div>
             </section>
 
             <section id="player-section" class="player-section hidden">
                 <div class="player-header">
-                    <span id="provider-badge" class="badge">Vidlink</span>
+                    <!-- Manual Switch: Click badge to cycle providers -->
+                    <span id="provider-badge" class="badge" data-action="manual-switch" style="cursor: pointer;"
+                        title="Click to change server"></span>
                     <button class="btn-icon" data-action="close-player">✕ Close</button>
                 </div>
                 <div class="video-wrapper" id="iframe-wrapper"></div>
@@ -60,7 +61,7 @@
         </main>
     </div>
 
-    <!-- DOM Templates for 0ms Rendering -->
+    <!-- DOM Templates -->
     <template id="tpl-history-item">
         <div class="history-item">
             <button class="delete-btn" data-action="delete-history">✕</button>
@@ -73,82 +74,12 @@
             </div>
         </div>
     </template>
+
     <template id="tpl-search-item">
         <div class="search-item" data-action="select-search">
             <strong class="search-title"></strong> <span class="search-year"></span>
         </div>
     </template>
-
-    <script src="script.js"></script>
-</body>
-
-</html>
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamSafe</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="manifest" href="manifest.json">
-</head>
-
-<body>
-    <div class="app-container">
-
-        <header>
-            <h1>StreamSafe</h1>
-            <p>Hyper-Resilient Streaming Engine</p>
-        </header>
-
-        <div id="status-toast" class="toast hidden"></div>
-
-        <main>
-
-            <section class="card form-card">
-                <div class="form-row">
-                    <select id="media-type">
-                        <option value="movie">Movie</option>
-                        <option value="tv">TV Show</option>
-                    </select>
-
-                    <input type="text" id="search-query" placeholder="Search title...">
-
-                    <button id="btn-search" class="btn-primary">Search</button>
-                </div>
-
-                <div id="search-results" class="search-results hidden"></div>
-
-                <!-- FIXED TV SELECTOR -->
-                <div id="tv-selector" class="hidden">
-                    <p id="tv-title-display"></p>
-
-                    <div class="form-row">
-                        <select id="season-select"></select>
-                        <select id="episode-select"></select>
-                        <button id="btn-play-tv" class="btn-primary" disabled>Play</button>
-                    </div>
-                </div>
-
-            </section>
-
-            <section id="player-section" class="player-section hidden">
-                <div class="player-header">
-                    <span id="provider-badge" class="badge"></span>
-                    <button data-action="close-player">✕</button>
-                </div>
-
-                <div id="iframe-wrapper" class="video-wrapper"></div>
-            </section>
-
-            <section class="history-section">
-                <h2>Continue Watching</h2>
-                <div id="history-grid" class="history-grid"></div>
-            </section>
-
-        </main>
-    </div>
 
     <script src="script.js"></script>
 </body>

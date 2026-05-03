@@ -23,42 +23,42 @@ const PROVIDERS = [
         name: 'Vidlink',
         priority: 1,
         supportsTimestamp: true,
-        buildUrl: ({ type, tmdbId, season, episode, time }) => 
+        buildUrl: ({ type, tmdbId, season, episode, time }) =>
             `https://vidlink.pro/${type}/${tmdbId}${type === 'tv' ? `/${season}/${episode}` : ''}?primaryColor=3b82f6&autoplay=true&startAt=${time || 0}`
     },
     {
         name: 'VidSrc.to',
         priority: 2,
         supportsTimestamp: false,
-        buildUrl: ({ type, tmdbId, season, episode }) => 
+        buildUrl: ({ type, tmdbId, season, episode }) =>
             `https://vidsrc.to/embed/${type}/${tmdbId}${type === 'tv' ? `/${season}/${episode}` : ''}`
     },
     {
         name: 'SuperFlix',
         priority: 3,
         supportsTimestamp: false,
-        buildUrl: ({ type, tmdbId, season, episode }) => 
+        buildUrl: ({ type, tmdbId, season, episode }) =>
             `https://superflix.icu/api/${type}/${tmdbId}${type === 'tv' ? `/${season}/${episode}` : ''}`
     },
     {
         name: 'AutoEmbed',
         priority: 4,
         supportsTimestamp: false,
-        buildUrl: ({ type, tmdbId, season, episode }) => 
+        buildUrl: ({ type, tmdbId, season, episode }) =>
             `https://autoembed.cc/embed/${type}/${tmdbId}${type === 'tv' ? `/${season}/${episode}` : ''}`
     },
     {
         name: 'WarezCDN',
         priority: 5,
         supportsTimestamp: false,
-        buildUrl: ({ type, tmdbId, season, episode }) => 
+        buildUrl: ({ type, tmdbId, season, episode }) =>
             `https://embed.warezcdn.com/v2/${type}/${tmdbId}${type === 'tv' ? `/${season}/${episode}` : ''}`
     },
     {
         name: 'VidSrc.me',
         priority: 6,
         supportsTimestamp: false,
-        buildUrl: ({ type, tmdbId, season, episode }) => 
+        buildUrl: ({ type, tmdbId, season, episode }) =>
             `https://vidsrc.me/embed/${tmdbId}${type === 'tv' ? `/${season}/${episode}` : ''}`
     }
 ];
@@ -68,12 +68,12 @@ const ProviderEngine = {
     currentIndex: 0,
     activeProviders: [],
     attempts: 0,
-    
+
     init(tmdbId) {
         const isLowEnd = (navigator.deviceMemory && navigator.deviceMemory <= 2);
         const savedProvider = localStorage.getItem(`provider_${tmdbId}`);
         const cooldowns = JSON.parse(localStorage.getItem('provider_cooldowns') || '{}');
-        
+
         this.activeProviders = [...PROVIDERS].filter(p => {
             const expiry = cooldowns[p.name];
             return !expiry || Date.now() > expiry;
@@ -81,29 +81,29 @@ const ProviderEngine = {
             if (a.name === savedProvider) return -1;
             if (b.name === savedProvider) return 1;
             if (isLowEnd) {
-                if (a.supportsTimestamp && !b.supportsTimestamp) return -1; 
+                if (a.supportsTimestamp && !b.supportsTimestamp) return -1;
                 if (!a.supportsTimestamp && b.supportsTimestamp) return 1;
             }
             return a.priority - b.priority;
         });
-        
+
         if (this.activeProviders.length === 0) {
-            this.activeProviders = [...PROVIDERS].sort((a,b) => a.priority - b.priority); 
+            this.activeProviders = [...PROVIDERS].sort((a, b) => a.priority - b.priority);
         }
 
         this.currentIndex = 0;
         this.attempts = 0;
     },
-    
+
     getCurrent() { return this.activeProviders[this.currentIndex]; },
-    
+
     getNext() {
         this.attempts++;
         if (this.attempts >= this.activeProviders.length) return null;
         this.currentIndex++;
         return this.getCurrent();
     },
-    
+
     markSuccess(tmdbId) {
         const p = this.getCurrent();
         if (p) {
@@ -113,7 +113,7 @@ const ProviderEngine = {
             localStorage.setItem('provider_cooldowns', JSON.stringify(cooldowns));
         }
     },
-    
+
     markFailure() {
         const p = this.getCurrent();
         if (p) {
@@ -161,9 +161,9 @@ const SyncEngine = {
             local.forEach(item => {
                 if (item && item.tmdbId) AppState.historyCache.set(this.makeKey(item), item);
             });
-        } catch(e) { localStorage.removeItem('streamsafe_cache'); }
+        } catch (e) { localStorage.removeItem('streamsafe_cache'); }
 
-        try { AppState.offlineQueue = JSON.parse(localStorage.getItem('ss_queue') || '[]'); } catch(e) { AppState.offlineQueue = []; }
+        try { AppState.offlineQueue = JSON.parse(localStorage.getItem('ss_queue') || '[]'); } catch (e) { AppState.offlineQueue = []; }
 
         if (syncChannel) {
             syncChannel.onmessage = (e) => {
@@ -182,7 +182,7 @@ const SyncEngine = {
                         this.persistLocal();
                         if (!AppState.activeMedia) Renderer.renderHistory();
                     }
-                } catch(e) {}
+                } catch (e) { }
             };
         }
         this.flushQueue();
@@ -221,7 +221,7 @@ const SyncEngine = {
                 if (!AppState.activeMedia) Renderer.renderHistory();
             }
             AppState.retryCount = 0;
-        } catch(e) {
+        } catch (e) {
             if (AppState.retryCount < CONFIG.RETRY_LIMIT) {
                 AppState.retryCount++;
                 setTimeout(() => this.fetchRemote(), CONFIG.RETRY_BASE_MS * AppState.retryCount);
@@ -251,7 +251,7 @@ const SyncEngine = {
     },
 
     persistLocal() {
-        try { localStorage.setItem('streamsafe_cache', JSON.stringify(Array.from(AppState.historyCache.values()))); } catch(e) {}
+        try { localStorage.setItem('streamsafe_cache', JSON.stringify(Array.from(AppState.historyCache.values()))); } catch (e) { }
     },
 
     uploadTimeout: null,
@@ -281,7 +281,7 @@ const SyncEngine = {
         const idx = AppState.offlineQueue.findIndex(t => SyncEngine.makeKey(t.payload) === key && t.method === method);
         if (idx >= 0) AppState.offlineQueue[idx] = { method, payload };
         else AppState.offlineQueue.push({ method, payload });
-        try { localStorage.setItem('ss_queue', JSON.stringify(AppState.offlineQueue)); } catch(e) {}
+        try { localStorage.setItem('ss_queue', JSON.stringify(AppState.offlineQueue)); } catch (e) { }
     },
 
     flushQueue() {
@@ -331,7 +331,7 @@ const PlayerManager = {
         const provider = ProviderEngine.getCurrent();
         if (!provider) { DOM.toast("No working providers available."); this.close(); return; }
         const m = AppState.activeMedia;
-        const start = (provider.supportsTimestamp && AppState.lastKnownTime > 5 && (m.duration ? AppState.lastKnownTime < m.duration - 10 : true)) 
+        const start = (provider.supportsTimestamp && AppState.lastKnownTime > 5 && (m.duration ? AppState.lastKnownTime < m.duration - 10 : true))
             ? Math.floor(AppState.lastKnownTime) : 0;
         const url = provider.buildUrl({ type: m.type, tmdbId: m.tmdbId, season: m.season, episode: m.episode, time: start });
         DOM.get('provider-badge').textContent = provider.name;
@@ -343,7 +343,7 @@ const PlayerManager = {
         iframe.allow = "autoplay; fullscreen; picture-in-picture";
         wrapper.appendChild(iframe);
         this.startWatchdog(provider);
-        
+
         // 8s Watchdog: ONLY for providers that send playback events
         if (this.playGuard) clearTimeout(this.playGuard);
         if (provider.supportsTimestamp) {
@@ -464,7 +464,7 @@ const MetadataManager = {
         } catch (e) { return null; }
     },
 
-    setCache(key, data) { try { sessionStorage.setItem(key, JSON.stringify({ data, cachedAt: Date.now() })); } catch (e) {} },
+    setCache(key, data) { try { sessionStorage.setItem(key, JSON.stringify({ data, cachedAt: Date.now() })); } catch (e) { } },
 
     async loadTVShow(item) {
         DOM.show('tv-selector');
@@ -552,11 +552,11 @@ document.body.addEventListener('click', (e) => {
     else if (action === 'delete-history') {
         e.stopPropagation();
         const historyItem = actionEl.closest('.history-item');
-        if (historyItem) { try { SyncEngine.deleteEntry(JSON.parse(historyItem.dataset.payload)); } catch(e) {} }
+        if (historyItem) { try { SyncEngine.deleteEntry(JSON.parse(historyItem.dataset.payload)); } catch (e) { } }
     }
     else if (action === 'resume-play') {
         const historyItem = actionEl.closest('.history-item');
-        if (historyItem) { try { const p = JSON.parse(historyItem.dataset.payload); PlayerManager.launch(p, p.timestamp || 0); } catch(e) {} }
+        if (historyItem) { try { const p = JSON.parse(historyItem.dataset.payload); PlayerManager.launch(p, p.timestamp || 0); } catch (e) { } }
     }
     else if (action === 'select-search') {
         const type = DOM.get('media-type').value;
@@ -586,4 +586,4 @@ document.addEventListener('visibilitychange', () => {
     else if (!document.hidden && !AppState.activeMedia) SyncEngine.fetchRemote();
 });
 
-window.addEventListener('DOMContentLoaded', () => { Renderer.renderHistory(); SyncEngine.init(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+window.addEventListener('DOMContentLoaded', () => { Renderer.renderHistory(); SyncEngine.init(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { }); });

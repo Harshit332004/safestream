@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamSafe - Elite Engine</title>
+    <title>StreamSafe - Streaming Engine</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -45,8 +45,10 @@
 
             <section id="player-section" class="player-section hidden">
                 <div class="player-header">
-                    <span id="provider-badge" class="badge" data-action="manual-switch" style="cursor: pointer;"
-                        title="Click to cycle server"></span>
+                    <div class="provider-controls">
+                        <select id="provider-select" class="provider-dropdown" title="Switch video provider"></select>
+                        <span id="provider-status" class="provider-status">Ready</span>
+                    </div>
                     <button class="btn-icon" data-action="close-player">✕ Close</button>
                 </div>
                 <div class="video-wrapper" id="iframe-wrapper"></div>
@@ -59,7 +61,7 @@
         </main>
     </div>
 
-    <!-- Optimization: DOM Templates for 0ms Rendering -->
+    <!-- DOM Templates for 0ms Rendering -->
     <template id="tpl-history-item">
         <div class="history-item">
             <button class="delete-btn" data-action="delete-history">✕</button>

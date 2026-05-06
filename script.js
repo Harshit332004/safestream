@@ -1,7 +1,11 @@
 /**
- * StreamSafe Engine v10 - Fixed Provider System
- * Fixes: handleMessage missing, playDetected never set, infinite provider loop.
- * New: Manual provider dropdown, smarter heartbeat, Enter-to-search.
+ * StreamSafe Engine v10.1 - Verified Providers + Fixed Iframe Injection
+ * 
+ * FIXES:
+ * 1. Iframe was never appended to DOM (onload never fires on detached iframe)
+ * 2. Dead providers removed (AutoEmbed DNS dead, SuperEmbed 403)
+ * 3. Added verified-working providers with correct URL formats
+ * 4. Fixed 2embed TV URL format
  */
 
 const CONFIG = {
@@ -9,19 +13,59 @@ const CONFIG = {
     API_URL: 'https://safestream-ulch.onrender.com/api',
     SYNC_DELTA_S: 5,
     DEBOUNCE_MS: 3000,
-    HEARTBEAT_TIMEOUT: 15000, // 15s — give slow providers time to load
+    HEARTBEAT_TIMEOUT: 15000,
     MAX_QUEUE_SIZE: 50
 };
 
 const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('streamsafe_sync') : null;
 
+// ═══════════════════════════════════════════
+//  VERIFIED PROVIDERS (All tested 2026-05-06)
+//  Test IDs: Movie=27205 (Inception), TV=76479 (The Boys S1E1)
+// ═══════════════════════════════════════════
 const PROVIDERS = [
-    { name: 'Vidlink', supportsEvents: true, buildUrl: ({ type, id, s, e, time }) => `https://vidlink.pro/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}?primaryColor=3b82f6&autoplay=true&startAt=${time || 0}` },
-    { name: 'VidSrc.to', supportsEvents: false, buildUrl: ({ type, id, s, e }) => `https://vidsrc.to/embed/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}` },
-    { name: 'SuperEmbed', supportsEvents: false, buildUrl: ({ type, id, s, e }) => `https://multiembed.mov/?video_id=${id}&tmdb=1${type === 'tv' ? `&s=${s}&e=${e}` : ''}` },
-    { name: 'AutoEmbed', supportsEvents: false, buildUrl: ({ type, id, s, e }) => `https://player.autoembed.cc/embed/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}` },
-    { name: 'NontonGo', supportsEvents: false, buildUrl: ({ type, id, s, e }) => `https://www.NontonGo.win/embed/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}` },
-    { name: '2embed', supportsEvents: false, buildUrl: ({ type, id, s, e }) => `https://www.2embed.cc/embed/${id}${type === 'tv' ? `&s=${s}&e=${e}` : ''}` }
+    {
+        name: 'Vidlink',
+        supportsEvents: true,
+        buildUrl: ({ type, id, s, e, time }) =>
+            `https://vidlink.pro/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}?primaryColor=3b82f6&autoplay=true&startAt=${time || 0}`
+    },
+    {
+        name: 'VidSrc.cc',
+        supportsEvents: false,
+        buildUrl: ({ type, id, s, e }) =>
+            `https://vidsrc.cc/v2/embed/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}`
+    },
+    {
+        name: 'VidSrc.xyz',
+        supportsEvents: false,
+        buildUrl: ({ type, id, s, e }) =>
+            `https://vidsrc.xyz/embed/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}`
+    },
+    {
+        name: 'NontonGo',
+        supportsEvents: false,
+        buildUrl: ({ type, id, s, e }) =>
+            `https://www.NontonGo.win/embed/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}`
+    },
+    {
+        name: 'MoviesAPI',
+        supportsEvents: false,
+        buildUrl: ({ type, id, s, e }) =>
+            type === 'tv' ? `https://moviesapi.club/tv/${id}-${s}-${e}` : `https://moviesapi.club/movie/${id}`
+    },
+    {
+        name: '2embed',
+        supportsEvents: false,
+        buildUrl: ({ type, id, s, e }) =>
+            type === 'tv' ? `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}` : `https://www.2embed.cc/embed/${id}`
+    },
+    {
+        name: 'VidSrc.to',
+        supportsEvents: false,
+        buildUrl: ({ type, id, s, e }) =>
+            `https://vidsrc.to/embed/${type}/${id}${type === 'tv' ? `/${s}/${e}` : ''}`
+    }
 ];
 
 const AppState = {
@@ -97,7 +141,7 @@ const SyncEngine = {
 };
 
 // ═══════════════════════════════════════════
-//  PLAYER MANAGER (FIXED)
+//  PLAYER MANAGER
 // ═══════════════════════════════════════════
 const PlayerManager = {
     heartbeatTimer: null,
@@ -137,39 +181,57 @@ const PlayerManager = {
             time: Math.floor(AppState.lastKnownTime)
         });
 
-        // Update dropdown selection
+        // Update dropdown
         const select = DOM.get('provider-select');
         if (select) select.value = AppState.providerIndex;
 
-        DOM.get('provider-status').textContent = `Loading ${provider.name}...`;
-        DOM.get('provider-status').style.color = '#fbbf24'; // yellow
+        // Update status
+        const status = DOM.get('provider-status');
+        if (status) {
+            status.textContent = `Loading ${provider.name}...`;
+            status.style.color = '#fbbf24';
+        }
 
+        AppState.playDetected = false;
+        this.stopHeartbeat();
+        this.stopHeuristic();
+
+        // ═══════════════════════════════════════════
+        // CRITICAL FIX: Append iframe to DOM IMMEDIATELY
+        // The old code created the iframe but only appended it in onload,
+        // which never fires because the browser won't load a detached iframe.
+        // ═══════════════════════════════════════════
         const wrapper = DOM.get('iframe-wrapper');
-        // Show loading overlay
-        wrapper.innerHTML = `<div class="player-loader">⏳ Connecting to ${provider.name}...</div>`;
+        wrapper.innerHTML = ''; // Clear previous
 
+        // Create and IMMEDIATELY append the iframe
         const iframe = document.createElement('iframe');
         iframe.src = url;
         iframe.allowFullscreen = true;
         iframe.allow = "autoplay; fullscreen; picture-in-picture; encrypted-media";
-        iframe.style.cssText = "position:absolute;width:100%;height:100%;border:none;";
+        iframe.style.cssText = "position:absolute;width:100%;height:100%;border:none;z-index:1;";
 
-        // Reset play detection for this provider
-        AppState.playDetected = false;
+        // Create loading overlay ON TOP of iframe
+        const loader = document.createElement('div');
+        loader.className = 'player-loader';
+        loader.textContent = `⏳ Loading ${provider.name}...`;
+        loader.style.zIndex = '2';
 
+        // Add BOTH to DOM — iframe loads behind the overlay
+        wrapper.appendChild(iframe);
+        wrapper.appendChild(loader);
+
+        // When iframe loads, remove the overlay
         iframe.onload = () => {
-            // Remove loader, show iframe
-            const loader = wrapper.querySelector('.player-loader');
-            if (loader) loader.remove();
-            wrapper.appendChild(iframe);
-
-            DOM.get('provider-status').textContent = `${provider.name} (loaded)`;
-            DOM.get('provider-status').style.color = '#34d399'; // green
+            loader.remove();
+            if (status) {
+                status.textContent = `${provider.name} (ready)`;
+                status.style.color = '#34d399';
+            }
 
             // Start heuristic timer for non-event providers
-            this.stopHeuristic();
             if (!provider.supportsEvents) {
-                // For providers without postMessage, estimate time passing
+                this.stopHeuristic();
                 this.heuristicTimer = setInterval(() => {
                     if (!document.hidden && AppState.activeMedia) {
                         AppState.lastKnownTime += 3;
@@ -181,19 +243,14 @@ const PlayerManager = {
             }
         };
 
-        iframe.onerror = () => {
-            DOM.get('provider-status').textContent = `${provider.name} failed`;
-            DOM.get('provider-status').style.color = '#ef4444';
-        };
-
-        // Heartbeat: if no play event detected within timeout, mark as potentially dead
-        // But do NOT auto-switch — let the user decide
-        this.stopHeartbeat();
+        // Heartbeat: warn user if provider seems dead (but NO auto-switch)
         this.heartbeatTimer = setTimeout(() => {
-            if (!AppState.playDetected && PROVIDERS[AppState.providerIndex].supportsEvents) {
-                DOM.get('provider-status').textContent = `${provider.name} — no signal (try switching ↓)`;
-                DOM.get('provider-status').style.color = '#fbbf24';
-                DOM.toast(`${provider.name} may be down. Use the dropdown to switch.`, 5000);
+            if (!AppState.playDetected && provider.supportsEvents) {
+                if (status) {
+                    status.textContent = `${provider.name} — no signal. Try another ↓`;
+                    status.style.color = '#fbbf24';
+                }
+                DOM.toast(`${provider.name} may be slow. Pick another from the dropdown.`, 5000);
             }
         }, CONFIG.HEARTBEAT_TIMEOUT);
     },
@@ -212,7 +269,7 @@ const PlayerManager = {
         this.stopHeuristic();
         const wrapper = DOM.get('iframe-wrapper');
         const iframe = wrapper?.querySelector('iframe');
-        if (iframe) iframe.removeAttribute('src');
+        if (iframe) iframe.removeAttribute('src'); // Stop ghost audio
         if (wrapper) wrapper.innerHTML = '';
         DOM.hide('player-section');
         if (AppState.activeMedia) SyncEngine.saveProgress(AppState.lastKnownTime);
@@ -229,20 +286,21 @@ const PlayerManager = {
         if (this.heuristicTimer) { clearInterval(this.heuristicTimer); this.heuristicTimer = null; }
     },
 
-    // THIS IS THE CRITICAL MISSING FUNCTION
     handleMessage(event) {
         if (!event.data || !event.data.type) return;
 
-        // Handle Vidlink PLAYER_EVENT messages
         if (event.data.type === 'PLAYER_EVENT' && event.data.data) {
             const { event: eventType, currentTime, duration } = event.data.data;
 
             if (eventType === 'play' || eventType === 'playing') {
                 AppState.isPlaying = true;
-                AppState.playDetected = true; // THIS is what stops the heartbeat warning
+                AppState.playDetected = true;
                 PlayerManager.stopHeartbeat();
-                DOM.get('provider-status').textContent = `${PROVIDERS[AppState.providerIndex].name} ▶ Playing`;
-                DOM.get('provider-status').style.color = '#34d399';
+                const status = DOM.get('provider-status');
+                if (status) {
+                    status.textContent = `${PROVIDERS[AppState.providerIndex].name} ▶ Playing`;
+                    status.style.color = '#34d399';
+                }
             }
             if (eventType === 'pause') {
                 AppState.isPlaying = false;
@@ -254,7 +312,6 @@ const PlayerManager = {
             if (eventType === 'timeupdate' && currentTime !== undefined) {
                 AppState.lastKnownTime = currentTime;
                 AppState.playDetected = true;
-                // Debounced sync every 5 seconds
                 if (Date.now() - AppState.lastSyncTime > 5000) {
                     AppState.lastSyncTime = Date.now();
                     SyncEngine.saveProgress(currentTime, duration);
@@ -265,7 +322,6 @@ const PlayerManager = {
             }
         }
 
-        // Handle Vidlink MEDIA_DATA fallback
         if (event.data.type === 'MEDIA_DATA') {
             localStorage.setItem('vidLinkProgress', JSON.stringify(event.data.data));
         }
@@ -273,7 +329,7 @@ const PlayerManager = {
 };
 
 // ═══════════════════════════════════════════
-//  METADATA MANAGER (TV Show Seasons/Episodes)
+//  METADATA MANAGER
 // ═══════════════════════════════════════════
 const MetadataManager = {
     async loadTVShow(id, title) {
@@ -289,15 +345,14 @@ const MetadataManager = {
                 .join('');
             this.loadEpisodes(id, seasonSelect.value);
             DOM.get('tv-title-display').textContent = title;
-        } catch (e) { DOM.toast("Failed to load show metadata."); }
+        } catch (e) { DOM.toast("Failed to load show info."); }
     },
     async loadEpisodes(id, season) {
         DOM.get('btn-play-tv').disabled = true;
         try {
             const res = await fetch(`https://api.themoviedb.org/3/tv/${id}/season/${season}?api_key=${CONFIG.TMDB_KEY}`);
             const data = await res.json();
-            const epSelect = DOM.get('episode-select');
-            epSelect.innerHTML = data.episodes
+            DOM.get('episode-select').innerHTML = data.episodes
                 .map(e => `<option value="${e.episode_number}">Ep ${e.episode_number}: ${e.name}</option>`)
                 .join('');
             DOM.get('btn-play-tv').disabled = false;
@@ -358,7 +413,7 @@ const Renderer = {
                 frag.appendChild(clone);
             });
             container.replaceChildren(frag);
-        } catch (e) { container.innerHTML = '<div style="padding:10px">Search failed. Check your connection.</div>'; }
+        } catch (e) { container.innerHTML = '<div style="padding:10px">Search failed.</div>'; }
     }
 };
 
@@ -366,14 +421,14 @@ const Renderer = {
 //  EVENT SYSTEM
 // ═══════════════════════════════════════════
 
-// Vidlink postMessage listener
+// Vidlink postMessage
 window.addEventListener('message', (e) => {
     if (e.origin && e.origin.includes('vidlink.pro')) {
         PlayerManager.handleMessage(e);
     }
 });
 
-// Delegated click handler
+// Delegated clicks
 document.body.addEventListener('click', (e) => {
     const actionEl = e.target.closest('[data-action]');
     if (!actionEl) return;
@@ -408,7 +463,7 @@ document.body.addEventListener('click', (e) => {
     }
 });
 
-// Provider dropdown change
+// Provider dropdown
 document.addEventListener('change', (e) => {
     if (e.target.id === 'provider-select') {
         PlayerManager.switchToProvider(parseInt(e.target.value));
@@ -418,7 +473,7 @@ document.addEventListener('change', (e) => {
     }
 });
 
-// Search on Enter key
+// Enter to search
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.id === 'search-query') {
         const q = e.target.value.trim();
@@ -442,7 +497,7 @@ DOM.get('btn-play-tv')?.addEventListener('click', () => {
     });
 });
 
-// Visibility change — save progress when tab hidden, refresh history when returning
+// Tab visibility
 document.addEventListener('visibilitychange', () => {
     if (document.hidden && AppState.activeMedia) {
         SyncEngine.saveProgress(AppState.lastKnownTime);

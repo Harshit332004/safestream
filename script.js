@@ -93,7 +93,9 @@ const SyncEngine = {
         let local = [];
         try { local = JSON.parse(localStorage.getItem('streamsafe_cache') || '[]'); } catch (e) { local = []; }
         local.forEach(item => AppState.historyCache.set(this.makeKey(item), item));
-        this.fetchRemote();
+        // Show local data immediately, then do full two-way sync
+        Renderer.renderHistory();
+        this.fullSync();
         if (syncChannel) {
             syncChannel.onmessage = (e) => {
                 const { type, payload } = e.data;
@@ -104,18 +106,49 @@ const SyncEngine = {
         }
     },
     makeKey: (i) => `${i.tmdbId}_${i.type}_${i.season || 1}_${i.episode || 1}`,
-    async fetchRemote() {
+
+    /**
+     * TWO-WAY SYNC (the fix for different history on different browsers)
+     * Step 1: Push ALL local items to server (server uses last_updated conflict resolution)
+     * Step 2: Pull ALL items from server and REPLACE local cache entirely
+     * Result: All browsers converge to same state
+     */
+    async fullSync() {
         if (!navigator.onLine) return;
         try {
-            const res = await fetch(`${CONFIG.API_URL}/continue-watching`, { headers: { 'x-api-key': 'streamsafe-secret' } });
+            // Step 1: Upload all local items to server
+            const localItems = Array.from(AppState.historyCache.values());
+            if (localItems.length > 0) {
+                // Use Promise.allSettled so one failure doesn't block others
+                await Promise.allSettled(localItems.map(item =>
+                    fetch(`${CONFIG.API_URL}/sync`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-api-key': 'streamsafe-secret' },
+                        body: JSON.stringify(item),
+                        keepalive: true
+                    }).catch(() => {})
+                ));
+            }
+
+            // Step 2: Pull ALL items from server (this is now the truth)
+            const res = await fetch(`${CONFIG.API_URL}/continue-watching`, {
+                headers: { 'x-api-key': 'streamsafe-secret' }
+            });
             if (!res.ok) return;
             const { history } = await res.json();
+
             if (history) {
+                // REPLACE local cache entirely with server data
+                AppState.historyCache.clear();
                 history.forEach(item => AppState.historyCache.set(this.makeKey(item), item));
-                this.persistLocal(); Renderer.renderHistory();
+                this.persistLocal();
+                Renderer.renderHistory();
             }
-        } catch (e) { console.warn('Remote sync skipped:', e.message); }
+        } catch (e) {
+            console.warn('Full sync failed, using local cache:', e.message);
+        }
     },
+
     saveProgress(time, duration = 0, isComplete = false) {
         if (!AppState.activeMedia) return;
         const key = this.makeKey(AppState.activeMedia);
@@ -503,7 +536,7 @@ document.addEventListener('visibilitychange', () => {
         SyncEngine.saveProgress(AppState.lastKnownTime);
     }
     if (!document.hidden && !AppState.activeMedia) {
-        SyncEngine.fetchRemote();
+        SyncEngine.fullSync(); // Re-sync with server when returning to tab
     }
 });
 

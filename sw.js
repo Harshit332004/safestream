@@ -1,4 +1,4 @@
-const CACHE_NAME = 'streamsafe-core-v12';
+const CACHE_NAME = 'streamsafe-core-v15';
 const STATIC_ASSETS = ['/', '/index.html', '/style.css', '/script.js'];
 
 self.addEventListener('install', e => {

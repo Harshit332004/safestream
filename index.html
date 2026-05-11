@@ -4,69 +4,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamSafe - Streaming Engine</title>
+    <title>StreamSafe</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="Fast, seamless streaming with cross-device sync">
     <link rel="preconnect" href="https://api.themoviedb.org" crossorigin>
 </head>
 
 <body>
     <div class="app-container">
         <header>
-            <h1>StreamSafe</h1>
-            <p>Hyper-Resilient Streaming Engine</p>
+            <h1>Stream<span class="accent">Safe</span></h1>
+            <p class="subtitle">Fast, seamless, resume-enabled streaming</p>
         </header>
 
         <div id="status-toast" class="toast hidden"></div>
 
         <main>
-            <section class="card form-card">
+            <!-- Search Section -->
+            <section class="card search-card">
                 <div class="form-row">
-                    <select id="media-type">
-                        <option value="movie">Movie</option>
-                        <option value="tv">TV Show</option>
+                    <select id="media-type" aria-label="Content type">
+                        <option value="movie">🎬 Movie</option>
+                        <option value="tv">📺 TV Show</option>
                     </select>
-                    <input type="text" id="search-query" placeholder="Search title..." autocomplete="off">
+                    <input type="text" id="search-query" placeholder="What do you want to watch?" autocomplete="off">
                     <button id="btn-search" class="btn-primary">Search</button>
                 </div>
                 <div id="search-results" class="search-results hidden"></div>
 
-                <div id="tv-selector" class="hidden" style="margin-top: 1rem;">
-                    <p id="tv-title-display" class="accent-text"
-                        style="margin-bottom: 8px; font-weight: bold; color: var(--accent);"></p>
+                <div id="tv-selector" class="hidden tv-selector">
+                    <p id="tv-title-display" class="tv-title"></p>
                     <div class="form-row">
-                        <select id="season-select" style="flex: 1;"></select>
-                        <select id="episode-select" style="flex: 2;"></select>
-                        <button id="btn-play-tv" class="btn-primary" disabled>Play</button>
+                        <select id="season-select" style="flex: 1;" aria-label="Season"></select>
+                        <select id="episode-select" style="flex: 2;" aria-label="Episode"></select>
+                        <button id="btn-play-tv" class="btn-primary" disabled>▶ Play</button>
                     </div>
                 </div>
             </section>
 
+            <!-- Player Section -->
             <section id="player-section" class="player-section hidden">
                 <div class="player-header">
                     <div class="provider-controls">
                         <select id="provider-select" class="provider-dropdown" title="Switch video provider"></select>
                         <span id="provider-status" class="provider-status">Ready</span>
                     </div>
-                    <button class="btn-icon" data-action="close-player">✕ Close</button>
+                    <button class="btn-close" data-action="close-player">✕ Close</button>
+                </div>
+                <div class="player-controls-bar">
+                    <button class="btn-skip" data-action="skip-back" title="Skip back 10s">← 10s</button>
+                    <span id="player-time-display" class="time-display">0:00</span>
+                    <button class="btn-skip" data-action="skip-forward" title="Skip forward 10s">10s →</button>
                 </div>
                 <div class="video-wrapper" id="iframe-wrapper"></div>
+                <p class="player-tip">💡 Click the player first, then use ← → arrow keys to skip</p>
             </section>
 
+            <!-- History Section -->
             <section class="history-section">
-                <h2>Continue Watching</h2>
+                <div class="history-header">
+                    <h2>Continue Watching</h2>
+                    <button id="btn-clear-all" class="btn-ghost" data-action="clear-all" style="display:none">Clear All</button>
+                </div>
                 <div id="history-grid" class="history-grid"></div>
             </section>
         </main>
+
+        <footer>
+            <p>StreamSafe — Personal streaming engine</p>
+        </footer>
     </div>
 
-    <!-- DOM Templates for 0ms Rendering -->
+    <!-- Templates -->
     <template id="tpl-history-item">
         <div class="history-item">
-            <button class="delete-btn" data-action="delete-history">✕</button>
+            <button class="delete-btn" data-action="delete-history" aria-label="Remove">✕</button>
             <div class="item-content" data-action="resume-play">
-                <h3 class="item-title"></h3>
+                <div class="item-header">
+                    <h3 class="item-title"></h3>
+                    <span class="item-time"></span>
+                </div>
                 <div class="item-meta"></div>
                 <div class="progress-track">
                     <div class="progress-fill"></div>
@@ -74,9 +93,14 @@
             </div>
         </div>
     </template>
+
     <template id="tpl-search-item">
         <div class="search-item" data-action="select-search">
-            <strong class="search-title"></strong> <span class="search-year"></span>
+            <div class="search-info">
+                <strong class="search-title"></strong>
+                <span class="search-year"></span>
+            </div>
+            <span class="search-rating"></span>
         </div>
     </template>
 

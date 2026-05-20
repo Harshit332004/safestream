@@ -7,8 +7,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Auth middleware
+// Auth middleware (skip health check)
 app.use('/api', (req, res, next) => {
+    // Allow health check without auth
+    if (req.path === '/health') {
+        return next();
+    }
+
     if (req.headers["x-api-key"] !== "streamsafe-secret") {
         return res.status(403).json({ error: "Unauthorized access" });
     }

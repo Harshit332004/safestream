@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
+const fetch = require('node-fetch');
 const app = express();
 
 app.use(cors());
@@ -14,17 +15,16 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
-// Database: PRIMARY KEY is (tmdbId, type) — one entry per show/movie
-// Migration: drop old table if schema is wrong (old PK was tmdbId,type,season,episode)
+// ═══════════════════════════════════════════
+// HISTORY DATABASE
+// ═══════════════════════════════════════════
 const db = new sqlite3.Database('./history.db', (err) => {
     if (err) return console.error('DB open error:', err.message);
-    
-    // Check if table exists and has the correct schema
+
     db.get(`SELECT sql FROM sqlite_master WHERE type='table' AND name='history'`, (err, row) => {
         if (err) return console.error('Schema check error:', err.message);
-        
+
         if (row && row.sql && row.sql.includes('season, episode)')) {
-            // Old schema detected — drop and recreate
             console.log('Migrating database: old PK (tmdbId,type,season,episode) → new PK (tmdbId,type)');
             db.run(`DROP TABLE history`, () => {
                 createTable();
@@ -52,13 +52,16 @@ function createTable() {
     });
 }
 
-// Sync: upsert — for TV shows, this overwrites the previous episode entry
+// ═══════════════════════════════════════════
+// HISTORY API ENDPOINTS (EXISTING)
+// ═══════════════════════════════════════════
+
 app.post('/api/sync', (req, res) => {
     const { tmdbId, type, title, season, episode, timestamp, duration, last_updated } = req.body;
     if (!tmdbId || !type) return res.status(400).json({ error: "Missing tmdbId or type" });
 
     const ts = last_updated || Date.now();
-    
+
     db.run(
         `INSERT INTO history (tmdbId, type, title, season, episode, timestamp, duration, last_updated) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -71,14 +74,13 @@ app.post('/api/sync', (req, res) => {
             last_updated=excluded.last_updated
          WHERE excluded.last_updated > history.last_updated`,
         [tmdbId, type, title || "Unknown", season || 1, episode || 1, timestamp || 0, duration || 0, ts],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ success: true, changes: this.changes });
         }
     );
 });
 
-// Bulk sync: accept array of items (reduces network round-trips)
 app.post('/api/sync/bulk', (req, res) => {
     const items = req.body.items;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "Empty items array" });
@@ -106,7 +108,6 @@ app.post('/api/sync/bulk', (req, res) => {
     });
 });
 
-// Continue Watching list
 app.get('/api/continue-watching', (req, res) => {
     db.all(`SELECT * FROM history ORDER BY last_updated DESC LIMIT 20`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -114,7 +115,6 @@ app.get('/api/continue-watching', (req, res) => {
     });
 });
 
-// Delete entry
 app.delete('/api/history', (req, res) => {
     const { tmdbId, type } = req.body;
     if (!tmdbId || !type) return res.status(400).json({ error: "Missing parameters" });
@@ -124,17 +124,125 @@ app.delete('/api/history', (req, res) => {
     );
 });
 
-// Clear all history
 app.delete('/api/history/all', (req, res) => {
     db.run(`DELETE FROM history`, (err) => {
         err ? res.status(500).json({ error: err.message }) : res.json({ success: true });
     });
 });
 
-// Health check
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
 });
 
+// ═══════════════════════════════════════════
+// CINEPRO CORE INTEGRATION (PROXY)
+// ═══════════════════════════════════════════
+
+/**
+ * CINEPRO_CORE_URL — internal endpoint to your CinePro backend
+ * In development: http://localhost:4000 (via your laptop)
+ * In production (Render): Run CinePro Core in same container
+ * 
+ * For now, we'll assume it's running locally during dev
+ * Later, we'll set up CinePro Core as a separate service on Render
+ */
+const CINEPRO_CORE_URL = process.env.CINEPRO_CORE_URL || 'http://localhost:4000';
+
+/**
+ * Health check for CinePro backend
+ */
+app.get('/cinepro/health', async (req, res) => {
+    try {
+        const response = await fetch(`${CINEPRO_CORE_URL}/health`, { timeout: 3000 });
+        const data = await response.json();
+        res.json({
+            status: data.status === 'operational' ? 'ok' : 'degraded',
+            core: data
+        });
+    } catch (e) {
+        res.status(503).json({
+            status: 'unreachable',
+            error: e.message,
+            hint: 'Make sure CinePro Core is running'
+        });
+    }
+});
+
+/**
+ * Proxy: GET /cinepro/movie/:tmdbId
+ * Forwards request to CinePro Core and returns sources
+ */
+app.get('/cinepro/movie/:tmdbId', async (req, res) => {
+    const { tmdbId } = req.params;
+
+    try {
+        const response = await fetch(`${CINEPRO_CORE_URL}/movie/${tmdbId}`, {
+            timeout: 15000  // CinePro may take time scraping
+        });
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                error: `CinePro returned ${response.status}`,
+                sources: [],
+                subtitles: []
+            });
+        }
+
+        const data = await response.json();
+        res.json(data);
+    } catch (e) {
+        console.error(`CinePro movie fetch failed for ${tmdbId}:`, e.message);
+        res.status(503).json({
+            error: 'CinePro Core unavailable',
+            sources: [],
+            subtitles: [],
+            hint: e.message
+        });
+    }
+});
+
+/**
+ * Proxy: GET /cinepro/tv/:tmdbId/:season/:episode
+ * Forwards request to CinePro Core and returns sources
+ */
+app.get('/cinepro/tv/:tmdbId/:season/:episode', async (req, res) => {
+    const { tmdbId, season, episode } = req.params;
+
+    try {
+        const response = await fetch(
+            `${CINEPRO_CORE_URL}/tv/${tmdbId}/${season}/${episode}`,
+            { timeout: 15000 }
+        );
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                error: `CinePro returned ${response.status}`,
+                sources: [],
+                subtitles: []
+            });
+        }
+
+        const data = await response.json();
+        res.json(data);
+    } catch (e) {
+        console.error(`CinePro TV fetch failed for ${tmdbId}/${season}/${episode}:`, e.message);
+        res.status(503).json({
+            error: 'CinePro Core unavailable',
+            sources: [],
+            subtitles: [],
+            hint: e.message
+        });
+    }
+});
+
+// ═══════════════════════════════════════════
+// SERVER START
+// ═══════════════════════════════════════════
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`StreamSafe API running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`🚀 StreamSafe API running on port ${PORT}`);
+    console.log(`📍 History API: http://localhost:${PORT}/api`);
+    console.log(`🎬 CinePro proxy: http://localhost:${PORT}/cinepro`);
+    console.log(`🔗 CinePro Core backend: ${CINEPRO_CORE_URL}`);
+});
